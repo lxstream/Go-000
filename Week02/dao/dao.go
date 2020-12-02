@@ -17,7 +17,7 @@ var (
 )
 
 func init() {
-	dsn = "root:123123(127.0.0.1)/testdb?charset=utf8mb4&parseTime=True"
+	dsn = "root:123123@tcp(127.0.0.1)/testdb?charset=utf8mb4&parseTime=True"
 }
 
 func SelectUser(id int) (*User, error) {
