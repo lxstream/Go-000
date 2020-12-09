@@ -2,8 +2,10 @@ package dao
 
 import (
 	"database/sql"
+	"strconv"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/pkg/errors"
 )
 
 type User struct {
@@ -29,8 +31,20 @@ func SelectUser(id int) (*User, error) {
 	var u User
 
 	err = db.QueryRow(sqlStr, id).Scan(&u.Id, &u.Name)
-	if err != nil {
-		return nil, err
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// return &u, nil
+
+	//
+	switch {
+	case err == sql.ErrNoRows:
+		errMsg := "Can not find user with id:" + strconv.Itoa(id)
+		return nil, errors.Wrap(err, errMsg)
+	case err != nil:
+		errMsg := "something wrong in db query!"
+		return nil, errors.Wrap(err, errMsg)
+	default:
+		return &u, nil
 	}
-	return &u, nil
 }
