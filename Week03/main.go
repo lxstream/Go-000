@@ -6,11 +6,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"syscall"
 
 	"golang.org/x/sync/errgroup"
 )
 
-func serveDebug(ctx context.Context, stop <-chan bool) error {
+func serveDebug(ctx context.Context) error {
 	s := http.Server{
 		Addr:    "localhost:8000",
 		Handler: nil,
@@ -24,9 +25,6 @@ func serveDebug(ctx context.Context, stop <-chan bool) error {
 
 	go func() {
 		select {
-		case <-stop:
-			s.Shutdown(ctx)
-			fmt.Println("stop signal")
 		case <-ctx.Done():
 			s.Shutdown(ctx)
 			fmt.Println("ctx done", ctx.Err())
@@ -36,7 +34,7 @@ func serveDebug(ctx context.Context, stop <-chan bool) error {
 	return s.ListenAndServe()
 }
 
-func serveApp(ctx context.Context, stop <-chan bool) error {
+func serveApp(ctx context.Context) error {
 	s := http.Server{
 		Addr:    "localhost:8001",
 		Handler: nil,
@@ -44,9 +42,6 @@ func serveApp(ctx context.Context, stop <-chan bool) error {
 
 	go func() {
 		select {
-		case <-stop:
-			s.Shutdown(ctx)
-			fmt.Println("stop signal")
 		case <-ctx.Done():
 			s.Shutdown(ctx)
 			fmt.Println("ctx done", ctx.Err())
@@ -58,28 +53,36 @@ func serveApp(ctx context.Context, stop <-chan bool) error {
 }
 
 func main() {
-	sigs := make(chan os.Signal, 1)
-	stop := make(chan bool)
 
-	g, ctx := errgroup.WithContext(context.Background())
+	ctx, cancal := context.WithCancel(context.Background())
+	g, ctx := errgroup.WithContext(ctx)
 
-	signal.Notify(sigs)
-
-	go func() {
-		select {
-		case sign := <-sigs:
-			fmt.Println(sign)
-			stop <- true
-		case <-ctx.Done():
-			fmt.Println("signal stop")
-		}
-	}()
+	defer cancal()
 
 	g.Go(func() error {
-		return serveDebug(ctx, stop)
+		exitSignals := []os.Signal{os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGINT}
+		sig := make(chan os.Signal, len(exitSignals))
+		signal.Notify(sig, exitSignals...)
+
+		for {
+			fmt.Println("signal")
+			select {
+			case <-ctx.Done():
+				fmt.Println("signal ctx done")
+				return ctx.Err()
+			case sign := <-sig:
+				fmt.Println(sign)
+				cancal()
+				return nil
+			}
+		}
+	})
+
+	g.Go(func() error {
+		return serveDebug(ctx)
 	})
 	g.Go(func() error {
-		return serveApp(ctx, stop)
+		return serveApp(ctx)
 	})
 
 	fmt.Println("http servers start , awaiting signal")
